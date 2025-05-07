@@ -1,14 +1,26 @@
-name: spicy
+name: spicy-snow
 channels:
- - conda-forge
- - defaults
+  - conda-forge
+  - defaults
+
 dependencies:
- - numpy
- - pandas
- - xarray
- - rioxarray
- - shapely
- - hyp3_sdk
- - asf_search
- - matplotlib
- - netcdf4
+  - python=3.10
+  - pip
+  - proj=9.3.1
+  - proj-data=1.18
+  - pyproj=3.6.1
+  - rasterio
+  - geopandas
+  - xarray
+  - numpy
+  - pandas
+  - matplotlib
+  - shapely
+  - fiona
+  - gdal
+  - tqdm
+  - hyp3_sdk
+  - ipykernel
+  - jupyterlab
+  - pip:
+      - spicy-snow  # If installed via pip; adjust if local
