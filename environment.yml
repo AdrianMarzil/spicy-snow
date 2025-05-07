@@ -2,7 +2,6 @@ name: spicy-snow
 channels:
   - conda-forge
   - defaults
-
 dependencies:
   - python=3.10
   - pip
@@ -22,5 +21,8 @@ dependencies:
   - hyp3_sdk
   - ipykernel
   - jupyterlab
-  - pip:
-      - spicy-snow  # If installed via pip; adjust if local
+  - sqlite
+
+  
+  #TO INSTALL: 'conda env create -f environment.yml'
+  #TO UNINSTALL: 'conda remove -n spicy-snow --all'
