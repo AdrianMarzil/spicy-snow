@@ -16,7 +16,7 @@ from os.path import expanduser
 sys.path.append(expanduser('../'))
 
 # import functions for downloading
-from spicy_snow.download.sentinel1 import s1_img_search, hyp3_pipeline, download_hyp3, combine_s1_images
+from spicy_snow.download.sentinel1 import s1_img_search, hyp3_pipeline, download_hyp3, combine_s1_images, check_s1_downloaded, load_s1_downloaded
 from spicy_snow.download.forest_cover import download_fcf
 from spicy_snow.download.snow_cover import download_snow_cover
 
@@ -114,8 +114,12 @@ def retrieve_snow_depth(area: shapely.geometry.Polygon,
     using area: {area} and dates: {dates}."
 
     # download s1 images into dataset ['s1'] variable name
-    jobs = hyp3_pipeline(search_results, job_name = job_name, existing_job_name = existing_job_name)
-    imgs = download_hyp3(jobs, area, outdir = join(work_dir, 'tmp'), clean = False)
+    if not check_s1_downloaded(search_results, join(work_dir, 'tmp')):
+        jobs = hyp3_pipeline(search_results, job_name = job_name, existing_job_name = existing_job_name)
+        imgs = download_hyp3(jobs, area, outdir = join(work_dir, 'tmp'), clean = False)
+    else:
+        log.info("Sentinel-1 images already downloaded, reading from disk")
+        imgs = load_s1_downloaded(search_results, area, outdir = join(work_dir, 'tmp'))
     ds = combine_s1_images(imgs)
 
     # merge partial images together

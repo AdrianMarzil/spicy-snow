@@ -20,13 +20,87 @@ from hyp3_sdk.exceptions import AuthenticationError
 from typing import Dict, Tuple, List, Union
 
 import sys
-from os.path import expanduser
+from os.path import expanduser, exists
 sys.path.append(expanduser('~/Documents/spicy-snow'))
 from spicy_snow.utils.download import url_download
 from spicy_snow.processing.s1_preprocessing import s1_power_to_dB
 
 import logging
 log = logging.getLogger(__name__)
+
+def check_s1_downloaded(search_results, outdir):
+    """
+    Check whether all the files in the search results are already downloaded.
+    If not, it will return false.
+
+    This only returns true if ALL files in the expected list from the search results already exist.
+    """
+    granules = search_results['properties.sceneName']
+    for granule in granules:
+        for extension in ['VV','VH','inc']:
+            filename = join(outdir, f'{granule}_{extension}.tif')
+            if not exists(filename):
+                log.debug(f"{filename} not found.")
+                return False
+    log.debug('All images found.')
+    return True
+
+def load_s1_downloaded(search_results, area, outdir):
+    """
+    This is a copy of the portion of download_hyp3 that loads the images and reprojects them after they have been downloaded.
+    """
+    granules = search_results['properties.sceneName']
+
+    # results dictionary to send to next step
+    dataArrays = {}
+
+    # grab first granule name for reprojecting matching
+    first_granule = granules[0]
+
+    # loop through jobs
+    for granule in granules:
+        
+        # skip this loop if granule is repeated in job list
+        if granule in dataArrays.keys():
+            continue
+
+        imgs = []
+        for band_name in ['VV','VH','inc']:
+            filename = join(outdir, f'{granule}_{band_name}.tif')
+        
+            # open image in xarray
+            img = rxa.open_rasterio(filename, masked = True)
+
+            # reproject to WGS84
+            img = img.rio.reproject('EPSG:4326')
+
+            # clip to user specified area
+            img = img.rio.clip_box(*area.bounds)
+
+            # pad to user specified area
+            img = img.rio.pad_box(*area.bounds)
+
+            # add band to image
+            img = img.assign_coords(band = [band_name])
+
+            # add named band image to 3 image stack
+            imgs.append(img)
+
+        # concat VV, VH, and inc into one xarray DataArray
+        da = xr.concat(imgs, dim = 'band')
+
+        # coarsen to correct resolution (90 m)
+        da = da.coarsen(x = 3, boundary = 'trim').mean().coarsen(y = 3, boundary = 'trim').mean()
+
+        # we need to reproject each image to match the first image to make CRSs work
+        if dataArrays:
+            da = da.rio.reproject_match(dataArrays[first_granule])
+
+        # add img to downloaded dataArrays list with granule as key
+        dataArrays[granule] = da
+
+    return dataArrays
+
 
 def s1_img_search(area: shapely.geometry.Polygon, dates: Tuple[str, str]) -> pd.DataFrame:
     """
