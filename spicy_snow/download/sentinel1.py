@@ -58,7 +58,7 @@ def load_s1_downloaded(search_results, area, outdir):
     first_granule = granules[0]
 
     # loop through jobs
-    for granule in granules:
+    for granule in tqdm(granules, desc="Reading Sentinel-1 from disk"):
         
         # skip this loop if granule is repeated in job list
         if granule in dataArrays.keys():
