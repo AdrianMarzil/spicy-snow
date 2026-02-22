@@ -114,6 +114,21 @@ def retrieve_snow_depth(area: shapely.geometry.Polygon,
     using area: {area} and dates: {dates}."
 
     # download s1 images into dataset ['s1'] variable name
+    tmp_dir = join(work_dir, "tmp")
+
+    if check_s1_downloaded(search_results, tmp_dir):
+        log.info("Sentinel-1 images already downloaded, reading from disk")
+        imgs = load_s1_downloaded(search_results, area, outdir=tmp_dir)
+    else:
+        raise RuntimeError(
+            f"[STOP] Sentinel-1 cache check failed; would submit HyP3 jobs. "
+            f"Missing at least one of VV/VH/inc in: {tmp_dir}"
+        )
+
+    ds = combine_s1_images(imgs)
+
+    '''TEMPORARILY REMOVED/EDITED FOR TEST!!!
+
     if not check_s1_downloaded(search_results, join(work_dir, 'tmp')):
         jobs = hyp3_pipeline(search_results, job_name = job_name, existing_job_name = existing_job_name)
         imgs = download_hyp3(jobs, area, outdir = join(work_dir, 'tmp'), clean = False)
@@ -121,6 +136,8 @@ def retrieve_snow_depth(area: shapely.geometry.Polygon,
         log.info("Sentinel-1 images already downloaded, reading from disk")
         imgs = load_s1_downloaded(search_results, area, outdir = join(work_dir, 'tmp'))
     ds = combine_s1_images(imgs)
+
+    PUT THIS BACK AFTER TEST!!! REPLACE for: tmp_dir = join'''
 
     # merge partial images together
     ds = merge_partial_s1_images(ds)
