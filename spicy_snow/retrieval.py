@@ -139,7 +139,8 @@ def retrieve_snow_depth(area: shapely.geometry.Polygon,
         )
         imgs = download_hyp3(jobs, area, outdir=tmp_dir, clean=False)
 
-    ds = combine_s1_images(imgs)
+    ds = combine_s1_images(imgs, search_results)
+
 
     '''
     ORIGINAL CODE - Check for S1 images

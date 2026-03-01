@@ -320,98 +320,73 @@ def download_hyp3(jobs: sdk.jobs.Batch, area: shapely.geometry.Polygon, outdir: 
 
     return dataArrays
 
-def combine_s1_images(
-    dataArrays: Dict[str, xr.DataArray],
-    search_results: pd.DataFrame
-) -> xr.Dataset:
+def combine_s1_images(dataArrays: Dict[str, xr.DataArray]) -> xr.Dataset:
     """
-    Combine a dict of 3-banded Sentinel-1 DataArrays (VV/VH/inc) into one xarray Dataset
-    with time and metadata coordinates.
-
-    IMPORTANT PERFORMANCE NOTE
-    --------------------------
-    Older versions of this function called `asf.product_search()` inside the loop
-    to fetch metadata (flightDirection/pathNumber/orbit) for each granule. For large
-    jobs (hundreds of granules) that causes:
-      - Hundreds of network requests (slow)
-      - Massive console output ("SEARCH ... SUBQUERY ..."), often triggering Jupyter
-        output throttling ("There are more than 500 outputs...")
-
-    This updated version uses the metadata already returned by `s1_img_search()`
-    (passed in as `search_results`) and performs ZERO extra network calls.
+    Combine list of 3-banded Sentinel 1 data Arrays into a single xarray
+    Dataset with associated metadata bands and attributes.
 
     Args:
-        dataArrays:
-            Dictionary mapping granule sceneName -> 3-band DataArray (bands: VV, VH, inc)
-        search_results:
-            DataFrame returned by `s1_img_search()` containing per-granule metadata.
-            Must include at least:
-              - properties.sceneName
-              - properties.flightDirection
-              - properties.pathNumber
-              - properties.orbit
+    dataArrays: dictionary of granule name and 3 band Sentinel-1 data Arrays
 
     Returns:
-        s1_dataset:
-            xr.Dataset with variable 's1' and coordinates:
-              - time
-              - flight_dir
-              - platform
-              - relative_orbit
-              - absolute_orbit
-            plus attributes like 'resolution' and 's1_units'
+    dataset: xr dataset with time dimension added, metadata attributes, and 
+    metadata coordinates (flight direction, orbit #, platform)
     """
-    # Build a fast metadata lookup table indexed by granule scene name
-    meta = search_results.set_index("properties.sceneName")
-
     das = []
 
-    for granule, da in tqdm(dataArrays.items(), desc="Combining Sentinel-1 dataArrays"):
+    for granule, da in tqdm(dataArrays.items(), desc = 'Combining Sentinel-1 dataArrays'):
+        # get granule metadata
+        granule_metadata = asf.product_search(f'{granule}-GRD_HD')[0]
 
-        # Pull metadata from search_results (NO online queries)
-        try:
-            row = meta.loc[granule]
-        except KeyError as e:
-            raise KeyError(
-                f"Granule '{granule}' not found in search_results. "
-                "Make sure you pass the same search_results returned by s1_img_search()."
-            ) from e
+        # set flight direction
+        flight_dir = granule_metadata.properties['flightDirection'].lower()
 
-        flight_dir = str(row["properties.flightDirection"]).lower()
-        relative_orbit = int(row["properties.pathNumber"])
-        absolute_orbit = int(row["properties.orbit"])
+        # set relative orbit 
+        relative_orbit = granule_metadata.properties['pathNumber']
 
-        # Expand scalar time dimension -> length-1 time dimension
-        da = da.expand_dims(dim={"time": 1})
+        # set absolute orbit
+        absolute_orbit = granule_metadata.properties['orbit']
 
-        # Time from granule name (same as before)
-        da = da.assign_coords(time=[pd.to_datetime(granule.split("_")[4])])
+        # expand time dimension of DataArray from zero dimension (scalar) to 1d
+        da = da.expand_dims(dim = {'time': 1})
 
-        # Metadata as indexable coordinates along time
-        da = da.assign_coords(flight_dir=("time", [flight_dir]))
-        da = da.assign_coords(platform=("time", [granule[0:3]]))
-        da = da.assign_coords(relative_orbit=("time", [relative_orbit]))
-        da = da.assign_coords(absolute_orbit=("time", [absolute_orbit]))
+        # add time as a indexable parameter
+        da = da.assign_coords(time = [pd.to_datetime(granule.split('_')[4])])
 
+        # add flight direction as indexable parameter
+        da = da.assign_coords(flight_dir = ('time', [flight_dir]))
+
+        # add platform as indexable parameter
+        platform = granule[0:3]
+        da = da.assign_coords(platform = ('time', [platform]))
+
+        # add relative orbit as indexable parameter
+        da = da.assign_coords(relative_orbit = ('time', [relative_orbit]))
+
+        # add absolute orbit as indexable parameter
+        da = da.assign_coords(absolute_orbit = ('time', [absolute_orbit]))
+        
+        # append multi-band image to das list to concat into time-series DataArray
         das.append(da)
 
-    # Concatenate into a time series
-    s1_dataArray = xr.concat(das, dim="time")
+    # take list of multi-band images with different time values and make time series
+    s1_dataArray = xr.concat(das, dim = 'time')
 
-    # Convert to Dataset
-    s1_dataset = s1_dataArray.to_dataset(name="s1", promote_attrs=True)
+    # make sentinel 1 dataset 
+    s1_dataset = s1_dataArray.to_dataset(name = 's1', promote_attrs = True)
 
-    # Resolution set to 90 m (note: coarsening already happens earlier)
-    # Must be in linear space (not logarithmic dB) before converting
-    assert s1_dataset["s1"].sel(band=["VV", "VH"]).min() >= 0
-    s1_dataset.attrs["resolution"] = "90"
+    # resolution set to 90m:
+    # must do in linear space not logarithmic dBs
+    assert s1_dataset['s1'].sel(band = ['VV', 'VH']).min() >= 0
+    # s1_dataset = s1_dataset.coarsen(x = 3, boundary = 'trim').mean().coarsen(y = 3, boundary = 'trim').mean()
+    s1_dataset.attrs['resolution'] = '90'
 
-    # Ensure time dimension is sorted
-    s1_dataset = s1_dataset.sortby("time")
-
-    # Convert to dB and tag units
+    # ensure time dimension is sorted
+    s1_dataset = s1_dataset.sortby('time')
+    
+    # s1_units tag
     s1_dataset = s1_power_to_dB(s1_dataset)
-    s1_dataset.attrs["s1_units"] = "dB"
+    s1_dataset.attrs['s1_units'] = 'dB'
 
     return s1_dataset
 
